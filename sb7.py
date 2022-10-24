@@ -18,11 +18,11 @@ exchange = kcf({
 
 COINS = ['SUSHI/USDT:USDT', 'KLAY/USDT:USDT', 'RNDR/USDT:USDT', 'OP/USDT:USDT']
 
-LOTS_PER_TRADE = 100
-STOP_LOSS = -0.05
-TAKE_PROFIT = 0.05
+LOTS_PER_TRADE = 10
+STOP_LOSS = -0.2
+TAKE_PROFIT = 0.1
 LEVERAGE = 20
-TIMEFRAME = '15m'
+TIMEFRAME = '5m'
 cycle = 0
 def getData(coin, TIMEFRAME):
     data = exchange.fetch_ohlcv(coin, TIMEFRAME, limit=500)
@@ -119,28 +119,30 @@ while True:
         exit = {'reduceOnly': True, 'closeOrder': True}
         enter = {'leverage': LEVERAGE}
                 
-        hema = ema(h, 21, 1)
-        lema = ema(l, 21, 1)
+        hema = ema(h, 8, 1)
+        lema = ema(l, 8, 1)
         clema = ema(c, 8, 1)
         opema = ema(o, 8, 1)
         signal = ema(o,3,1)+ema(c,3,1)+ema(h,3,1)+ema(l,3,1)/4
-        upperBand = bands(20, 1, 1)['upper']
-        lowerBand =  bands(20, 1, 1)['lower']
-        
-        bearish = (ema(c,50,1) - ema(c,100,1)) < ema(c,20,1) or opema > clema
-        bullish = (ema(c,50,1) - ema(c,100,1)) > ema(c,20,1) or opema < clema
-
-        bullBands = Open < lowerBand and rsi(8,3,1) > 30
-        bearBands = Open > upperBand and rsi(8,3,1) < 70
-
+        upperBand = bands(20, 2, 1)['upper']
+        lowerBand =  bands(20, 2, 1)['lower']
         try:
             if pnl < -abs(STOP_LOSS) or pnl > abs(TAKE_PROFIT):
                 if side == 'long':
                     order.sell()
                 elif side == 'short':
                     order.buy()
-            order.buy() if bullish or bullBands else order.sell() if bearish or bearBands else exchange.cancel_all_orders()
-        
+                        
+            if hema < upperBand and lema > bands(20,2,1)['middle'] and rsi(8,3,1) < 80: order.buy()
+            elif opema < clema and Open > Close and lastOpen > lastClose and rsi(8,3,1) > 50 and (ema(c,50,1) - ema(c,100,1)) > ema(c,20,1) and (ema(c,8,1) - ema(c,13,1)) >  ema(c,3,1): order.sell()
+            
+            if lema > lowerBand and hema < bands(20,2,1)['middle'] and rsi(8,3,1) > 20: order.sell()
+            elif opema > clema and Open < Close and lastOpen < lastClose and rsi(8,3,1) < 50 and (ema(c,50,1) - ema(c,100,1)) < ema(c,20,1) and (ema(c,8,1) - ema(c,13,1)) < ema(c,3,1): order.buy()
+            
+            if (side == 'long' or Open > upperBand) and (Close < lema or Close < Open): order.sell()
+            if (side == 'short' or Open < lowerBand) and (Close > hema or Close > Open): order.buy()
+
+
         except Exception as e:
             print(e)
             logging.exception(e)
