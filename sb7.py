@@ -126,23 +126,40 @@ while True:
         signal = ema(o,3,1)+ema(c,3,1)+ema(h,3,1)+ema(l,3,1)/4
         upperBand = bands(20, 2, 1)['upper']
         lowerBand =  bands(20, 2, 1)['lower']
+        
         try:
             if pnl < -abs(STOP_LOSS) or pnl > abs(TAKE_PROFIT):
+                print(0)
                 if side == 'long':
                     order.sell()
                 elif side == 'short':
                     order.buy()
-                        
-            if hema < upperBand and lema > bands(20,2,1)['middle'] and rsi(8,3,1) < 80: order.buy()
-            elif opema < clema and Open > Close and lastOpen > lastClose and rsi(8,3,1) > 50 and (ema(c,50,1) - ema(c,100,1)) > ema(c,20,1) and (ema(c,8,1) - ema(c,13,1)) >  ema(c,3,1): order.sell()
             
-            if lema > lowerBand and hema < bands(20,2,1)['middle'] and rsi(8,3,1) > 20: order.sell()
-            elif opema > clema and Open < Close and lastOpen < lastClose and rsi(8,3,1) < 50 and (ema(c,50,1) - ema(c,100,1)) < ema(c,20,1) and (ema(c,8,1) - ema(c,13,1)) < ema(c,3,1): order.buy()
+            if side == 'long' and signal > Close and Open > Close: 
+                print(5)
+                order.sell()
             
-            if (side == 'long' or Open > upperBand) and (Close < lema or Close < Open): order.sell()
-            if (side == 'short' or Open < lowerBand) and (Close > hema or Close > Open): order.buy()
+            elif side == 'short' and signal < Close and Open < Close:
+                print(6)
+                order.buy()
+            
+            else:
+                if hema < upperBand and lema > bands(20,2,1)['middle'] and rsi(13,8,1) < 80 and opema < clema and (ema(c,13,1) - ema(c,21,1)) < ema(c,8,1):
+                    print(1)
+                    order.buy()
 
-
+                if lema > lowerBand and hema < bands(20,2,1)['middle'] and rsi(13,8,1) > 20 and opema > clema and (ema(c,13,1) - ema(c,21,1)) > ema(c,8,1):
+                    print(2)
+                    order.sell()
+                
+                if Open > Close and opema > clema and rsi(8,3,1) > 30 and (ema(c,100,1) - ema(c,200,1)) < ema(c,50,1) and (ema(c,13,1) - ema(c,21,1)) < ema(c,8,1):
+                    print(3)
+                    order.buy()
+            
+                if Open < Close and opema < clema and rsi(8,3,1) < 70 and (ema(c,100,1) - ema(c,200,1)) > ema(c,50,1) and (ema(c,13,1) - ema(c,21,1)) >  ema(c,8,1):
+                    print(4)
+                    order.sell()
+                
         except Exception as e:
             print(e)
             logging.exception(e)
