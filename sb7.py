@@ -16,13 +16,13 @@ exchange = kcf({
     'adjustForTimeDifference': True, 
 })
 
-COINS = ['LIT/USDT:USDT', 'KLAY/USDT:USDT', 'RNDR/USDT:USDT', 'LUNC/USDT:USDT', 'LUNA/USDT:USDT', 'OP/USDT:USDT', 'ETC/USDT:USDT', 'APE/USDT:USDT']
+COINS = ['SUSHI/USDT:USDT', 'KLAY/USDT:USDT', 'RNDR/USDT:USDT', 'OP/USDT:USDT']
 
 LOTS_PER_TRADE = 100
-STOP_LOSS = -0.2
-TAKE_PROFIT = 0.2
+STOP_LOSS = -0.05
+TAKE_PROFIT = 0.05
 LEVERAGE = 20
-TIMEFRAME = '5m'
+TIMEFRAME = '15m'
 cycle = 0
 def getData(coin, TIMEFRAME):
     data = exchange.fetch_ohlcv(coin, TIMEFRAME, limit=500)
@@ -126,16 +126,12 @@ while True:
         signal = ema(o,3,1)+ema(c,3,1)+ema(h,3,1)+ema(l,3,1)/4
         upperBand = bands(20, 1, 1)['upper']
         lowerBand =  bands(20, 1, 1)['lower']
+        
+        bearish = (ema(c,50,1) - ema(c,100,1)) < ema(c,20,1) or opema > clema
+        bullish = (ema(c,50,1) - ema(c,100,1)) > ema(c,20,1) or opema < clema
 
-        bullish = opema < clema and rsi(8,3,1) > 30
-        bullBands = Open < (lowerBand and Close)
-        bullLongTermMACD = (ema(c,50,1) - ema(c,100,1)) > ema(c,20,1)
-        bullShortTermMACD = (ema(c,8,1) - ema(c,13,1)) > ema(c,5,1)
-
-        bearish = opema > clema and rsi(8,3,1) < 70
-        bearBands = Open > (upperBand and Close)
-        bearLongTermMACD = (ema(c,50,1) - ema(c,100,1)) <  ema(c,20,1)
-        bearShortTermMACD = (ema(c,8,1) - ema(c,13,1)) < ema(c,5,1)
+        bullBands = Open < lowerBand and rsi(8,3,1) > 30
+        bearBands = Open > upperBand and rsi(8,3,1) < 70
 
         try:
             if pnl < -abs(STOP_LOSS) or pnl > abs(TAKE_PROFIT):
@@ -143,8 +139,8 @@ while True:
                     order.sell()
                 elif side == 'short':
                     order.buy()
-            elif bullish and (bullLongTermMACD or bullShortTermMACD or bullBands): order.buy()
-            elif bearish and (bearLongTermMACD or bearShortTermMACD or bearBands): order.sell()
+            order.buy() if bullish or bullBands else order.sell() if bearish or bearBands else exchange.cancel_all_orders()
+        
         except Exception as e:
             print(e)
             logging.exception(e)
