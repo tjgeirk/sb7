@@ -16,11 +16,11 @@ exchange = kcf({
     'adjustForTimeDifference': True, 
 })
 
-COINS = ['LIT', 'KLAY', 'RNDR', 'APE', 'OP', 'LUNA', 'LUNC', 'ETC']
+COINS = ['LIT/USDT:USDT', 'KLAY/USDT:USDT', 'RNDR/USDT:USDT', 'LUNC/USDT:USDT', 'LUNA/USDT:USDT', 'OP/USDT:USDT', 'ETC/USDT:USDT', 'APE/USDT:USDT']
 
-LOTS_PER_TRADE = 10
-STOP_LOSS = -0.5
-TAKE_PROFIT = 0.1
+LOTS_PER_TRADE = 100
+STOP_LOSS = -0.2
+TAKE_PROFIT = 0.2
 LEVERAGE = 20
 TIMEFRAME = '5m'
 cycle = 0
@@ -92,12 +92,11 @@ while True:
     if cycle % 10 == 0:
         exchange.cancel_all_orders()
     for coin in COINS:
-        coin = str(f'{coin}/USDT:USDT')
         if coin in getPositions():
             contracts = getPositions()[coin]['contracts']
             side = getPositions()[coin]['side']
             pnl = getPositions()[coin]['percentage']
-            print(getPositions()[coin])
+            print(getPositions())
             #chart[coin].append(pnl)
         else:
             contracts = 0
