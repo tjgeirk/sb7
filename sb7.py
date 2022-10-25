@@ -118,8 +118,8 @@ while True:
         exit = {'reduceOnly': True, 'closeOrder': True}
         enter = {'leverage': LEVERAGE}
                 
-        clema = ema(c, 8, 1)
-        opema = ema(o, 8, 1)
+        clema = ema(c, 21, 1)
+        opema = ema(o, 21, 1)
         
         try:
             if pnl < -abs(STOP_LOSS) or pnl > abs(TAKE_PROFIT):
