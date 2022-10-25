@@ -117,9 +117,11 @@ while True:
 
         exit = {'reduceOnly': True, 'closeOrder': True}
         enter = {'leverage': LEVERAGE}
-                
+                              
         clema = ema(c, 21, 1)
         opema = ema(o, 21, 1)
+        clongma = ema(c,200,1)
+        olongma = ema(o,200,1)
         
         try:
             if pnl < -abs(STOP_LOSS) or pnl > abs(TAKE_PROFIT):
@@ -130,9 +132,9 @@ while True:
                     order.buy()
             
             else:
-                if macd(8,5,3,1)['macd'] > macd(8,5,3,1)['signal'] and macd(21,13,8,1)['macd'] > macd(21,13,8,1)['signal'] and Open < Close and opema < clema and rsi(2,1) > 50: order.buy()
+                if (side == 'short' or olongma < clongma) and macd(8,5,3,1)['macd'] > macd(8,5,3,1)['signal'] and macd(21,13,8,1)['macd'] > macd(21,13,8,1)['signal'] and Open < Close and opema < clema and rsi(2,1) > 50: order.buy()
 
-                if macd(8,5,3,1)['macd'] < macd(8,5,3,1)['signal'] and macd(21,13,8,1)['macd'] < macd(21,13,8,1)['signal'] and Open > Close and opema > clema and rsi(2,1) < 50: order.sell()
+                if (side == 'long' or olongma > clongma) and macd(8,5,3,1)['macd'] < macd(8,5,3,1)['signal'] and macd(21,13,8,1)['macd'] < macd(21,13,8,1)['signal'] and Open > Close and opema > clema and rsi(2,1) < 50: order.sell()
 
                 if side == 'long' and Close < ema(c,3,1): order.sell()
                 if side == 'short' and Close > ema(c,3,1): order.buy()
@@ -141,5 +143,4 @@ while True:
         except Exception as e:
             print(e)
             logging.exception(e)
-
 
