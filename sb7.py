@@ -1,28 +1,29 @@
+
 import datetime
 import logging
 
 logging.basicConfig(filename='shlongbot7.log', 
                     encoding='utf-8', level=logging.INFO)
+
 from ccxt import kucoinfutures as kcf
 from pandas import DataFrame as dataframe 
-from ta import trend, momentum
-
+from ta import trend, volatility, momentum
 
 exchange = kcf({
-    'apiKey': '', 
-    'secret': '', 
-    'password': '', 
+    'apiKey': '',
+    'secret': '',
+    'password': '',
     'adjustForTimeDifference': True, 
 })
 
-COINS = ['SUSHI/USDT:USDT', 'KLAY/USDT:USDT', 'RNDR/USDT:USDT', 'OP/USDT:USDT']
+COINS = ["KLAY/USDT:USDT", "OP/USDT:USDT", "SHIB/USDT:USDT", "DOGE/USDT:USDT"]
 
-LOTS_PER_TRADE = 100
+LOTS_PER_TRADE = 10
 STOP_LOSS = -0.1
-TAKE_PROFIT = 0.2
-LEVERAGE = 20
+TAKE_PROFIT = 1
+LEVERAGE = 5
 TIMEFRAME = '5m'
-cycle = 0
+
 def getData(coin, TIMEFRAME):
     data = exchange.fetch_ohlcv(coin, TIMEFRAME, limit=500)
     df = {}
@@ -77,30 +78,25 @@ def ema(ohlc, window, period):
     return trend.ema_indicator(ohlc, window).iloc[-period]
 
 def rsi(window, period):
-    return momentum.rsi(c,window).iloc[-period]
+    return momentum.rsi(c, window).iloc[-period]
 
-def macd(slow, fast, signal, period):
-    return {'macd':trend.macd(c, slow, fast).iloc[-period], 'signal':trend.macd_signal(c,slow,fast,signal).iloc[-period]}
+def stoch(window, smooth, period):
+    return {'stoch':momentum.stoch(h, l, c, window, smooth).iloc[-period], 'signal':momentum.stoch_signal(h, l, c, window, smooth).iloc[-period]}
 
-#chart = {}
-#for coin in COINS:
-#    chart[coin] = []
+def bands(window, devs, period):
+    return {'upper': volatility.bollinger_hband(c, window, devs).iloc[-period], 'lower': volatility.bollinger_lband(c, window, devs).iloc[-period], 'middle': volatility.bollinger_mavg(c, window, devs).iloc[-period]}
 
 while True:
-    cycle += 1
-    if cycle % 10 == 0:
-        exchange.cancel_all_orders()
+    print(getPositions())
     for coin in COINS:
         if coin in getPositions():
             contracts = getPositions()[coin]['contracts']
             side = getPositions()[coin]['side']
             pnl = getPositions()[coin]['percentage']
-            print(getPositions())
-            #chart[coin].append(pnl)
         else:
-            contracts = 0
-            side = 0
-            pnl = 0
+            contracts = None
+            side = None
+            pnl = None
 
         o = getData(coin, TIMEFRAME)['open']
         h = getData(coin, TIMEFRAME)['high']
@@ -117,30 +113,43 @@ while True:
 
         exit = {'reduceOnly': True, 'closeOrder': True}
         enter = {'leverage': LEVERAGE}
-                              
-        clema = ema(c, 21, 1)
-        opema = ema(o, 21, 1)
-        clongma = ema(c,200,1)
-        olongma = ema(o,200,1)
+        
+        hema =  ema(h, 8, 1)
+        lema = ema(l, 8, 1)
+        clema = ema(c, 8, 1)
+        opema = ema(o, 8, 1)
+    
+        longOk = stoch(200, 20, 1)['stoch'] > stoch(200, 20, 1)['signal']
+        shortOk = stoch(200, 20, 1)['stoch'] < stoch(200, 20, 1)['signal']
+
+        buyStoch = stoch(8, 3, 1)['stoch'] > stoch(8, 3, 1)['signal'] > 90
+        sellStoch = stoch(8, 3, 1)['stoch'] < stoch(8, 3, 1)['signal']
+
+        upperBand = bands(20, 2, 1)['upper']
+        lowerBand =  bands(20, 2, 1)['lower']
         
         try:
-            if pnl < -abs(STOP_LOSS) or pnl > abs(TAKE_PROFIT):
-                print(0)
-                if side == 'long':
-                    order.sell()
-                elif side == 'short':
-                    order.buy()
+            if pnl < STOP_LOSS or pnl > TAKE_PROFIT:
+                exchange.create_limit_order(coin, 'buy', contracts, bid, params=exit)
             
-            else:
-                if (side == 'short' or olongma < clongma) and macd(8,5,3,1)['macd'] > macd(8,5,3,1)['signal'] and macd(21,13,8,1)['macd'] > macd(21,13,8,1)['signal'] and Open < Close and opema < clema and rsi(2,1) > 50: order.buy()
+            if Close < lema and opema > clema:
+                order.sell()
 
-                if (side == 'long' or olongma > clongma) and macd(8,5,3,1)['macd'] < macd(8,5,3,1)['signal'] and macd(21,13,8,1)['macd'] < macd(21,13,8,1)['signal'] and Open > Close and opema > clema and rsi(2,1) < 50: order.sell()
+            if Close > lema and opema < clema:
+                order.buy()
+        
+            if (Close or lastClose) > upperBand and h.iloc[-2] > h.iloc[-1]:
+                order.sell()
+                    
+            if (Close or lastClose) < lowerBand and l.iloc[-2] < l.iloc[-1]:
+                order.buy()
 
-                if side == 'long' and Close < ema(c,3,1): order.sell()
-                if side == 'short' and Close > ema(c,3,1): order.buy()
+            if Open > upperBand > Close:
+                order.sell()
+                       
+            if Open < lowerBand < Close:
+                order.buy()
 
-                
         except Exception as e:
             print(e)
             logging.exception(e)
-
