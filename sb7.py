@@ -1,7 +1,7 @@
 
 import datetime
 import logging
-
+import time
 logging.basicConfig(filename='shlongbot7.log', 
                     encoding='utf-8', level=logging.INFO)
 
@@ -20,12 +20,12 @@ COINS = ["KLAY/USDT:USDT", "OP/USDT:USDT", "SHIB/USDT:USDT", "DOGE/USDT:USDT"]
 
 LOTS_PER_TRADE = 10
 STOP_LOSS = -0.1
-TAKE_PROFIT = 1
+TAKE_PROFIT = 0.05
 LEVERAGE = 5
-TIMEFRAME = '5m'
+TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h']
 
-def getData(coin, TIMEFRAME):
-    data = exchange.fetch_ohlcv(coin, TIMEFRAME, limit=500)
+def getData(coin, tf):
+    data = exchange.fetch_ohlcv(coin, tf, limit=500)
     df = {}
     for i, col in enumerate(['date', 'open', 'high', 'low', 'close', 
                              'volume']):
@@ -77,14 +77,23 @@ class order:
 def ema(ohlc, window, period):
     return trend.ema_indicator(ohlc, window).iloc[-period]
 
-def rsi(window, period):
-    return momentum.rsi(c, window).iloc[-period]
+def macd(fast=13, slow=21, signal=8, period=1):
+    macd = ema(c, fast) - ema(c, slow)
+    signal = ema(macd, signal)
+    return {'macd': macd.iloc[-period], 'signal': signal.iloc[-period]}
 
-def stoch(window, smooth, period):
-    return {'stoch':momentum.stoch(h, l, c, window, smooth).iloc[-period], 'signal':momentum.stoch_signal(h, l, c, window, smooth).iloc[-period]}
+def bands(window=20, devs=2, period=1):
+    return {
+        'upper': volatility.bollinger_hband(c, window, devs).iloc[-period], 
+        'lower': volatility.bollinger_lband(c, window, devs).iloc[-period], 
+        'middle': volatility.bollinger_mavg(c, window, devs).iloc[-period]}
 
-def bands(window, devs, period):
-    return {'upper': volatility.bollinger_hband(c, window, devs).iloc[-period], 'lower': volatility.bollinger_lband(c, window, devs).iloc[-period], 'middle': volatility.bollinger_mavg(c, window, devs).iloc[-period]}
+def donch(window=20, period=1):
+    return {
+        'upper': volatility.donchian_channel_hband(h,l,c,window).iloc[-period],
+        'lower': volatility.donchian_channel_lband(h,l,c,window).iloc[-period],
+        'middle': volatility.donchian_channel_mband(h,l,c,window).iloc[-period]
+    }
 
 while True:
     print(getPositions())
@@ -97,59 +106,74 @@ while True:
             contracts = None
             side = None
             pnl = None
+        for tf in TIMEFRAMES:
 
-        o = getData(coin, TIMEFRAME)['open']
-        h = getData(coin, TIMEFRAME)['high']
-        l = getData(coin, TIMEFRAME)['low']
-        c = getData(coin, TIMEFRAME)['close']
-        
-        Open = (c.iloc[-2]+o.iloc[-2])/2
-        lastOpen = (c.iloc[-3]+o.iloc[-3])/2
-        Close = (c.iloc[-1]+h.iloc[-1]+l.iloc[-1])/3
-        lastClose = (c.iloc[-2]+h.iloc[-2]+l.iloc[-2])/3
-
-        ask = exchange.fetch_order_book(coin)['asks'][0][0]
-        bid = exchange.fetch_order_book(coin)['bids'][0][0]
-
-        exit = {'reduceOnly': True, 'closeOrder': True}
-        enter = {'leverage': LEVERAGE}
-        
-        hema =  ema(h, 8, 1)
-        lema = ema(l, 8, 1)
-        clema = ema(c, 8, 1)
-        opema = ema(o, 8, 1)
-    
-        longOk = stoch(200, 20, 1)['stoch'] > stoch(200, 20, 1)['signal']
-        shortOk = stoch(200, 20, 1)['stoch'] < stoch(200, 20, 1)['signal']
-
-        buyStoch = stoch(8, 3, 1)['stoch'] > stoch(8, 3, 1)['signal'] > 90
-        sellStoch = stoch(8, 3, 1)['stoch'] < stoch(8, 3, 1)['signal']
-
-        upperBand = bands(20, 2, 1)['upper']
-        lowerBand =  bands(20, 2, 1)['lower']
-        
-        try:
-            if pnl < STOP_LOSS or pnl > TAKE_PROFIT:
-                exchange.create_limit_order(coin, 'buy', contracts, bid, params=exit)
+            o = getData(coin, tf)['open']
+            h = getData(coin, tf)['high']
+            l = getData(coin, tf)['low']
+            c = getData(coin, tf)['close']
             
-            if Close < lema and opema > clema:
-                order.sell()
+            Open = (c.iloc[-2]+o.iloc[-2])/2
+            lastOpen = (c.iloc[-3]+o.iloc[-3])/2
+            Close = (c.iloc[-1]+h.iloc[-1]+l.iloc[-1])/3
+            lastClose = (c.iloc[-2]+h.iloc[-2]+l.iloc[-2])/3
 
-            if Close > lema and opema < clema:
-                order.buy()
-        
-            if (Close or lastClose) > upperBand and h.iloc[-2] > h.iloc[-1]:
-                order.sell()
+            ask = exchange.fetch_order_book(coin)['asks'][0][0]
+            bid = exchange.fetch_order_book(coin)['bids'][0][0]
+
+            exit = {'reduceOnly': True, 'closeOrder': True}
+            enter = {'leverage': LEVERAGE}
+            
+            upperBand = bands()['upper']
+            lowerBand =  bands()['lower']
+            
+            upperDonch = donch()['upper']
+            lowerDonch = donch()['lower']
+            upperStop = donch(5)['upper']
+            lowerStop = donch(5)['lower']
+            
+            try:
+                if pnl < STOP_LOSS or pnl > TAKE_PROFIT:
+                    exchange.create_limit_order(coin, 'buy', contracts, bid, params=exit)
                     
-            if (Close or lastClose) < lowerBand and l.iloc[-2] < l.iloc[-1]:
-                order.buy()
+                if ((Open > upperBand) and (Open > Close) and 
+                    (macd()['macd'] < macd()['signal'])):
+                        while True:
+                            order.sell()
+                            if ((h.iloc[-1] == upperStop) or
+                                (macd()['macd'] > macd()['signal'])):
+                                    order.buy()
+                                    break
+                                
+                if ((Open < lowerBand) and (Open < Close) and 
+                    (macd()['macd'] > macd()['signal'])):
+                        while Open < Close:
+                            order.buy()
+                            if ((l.iloc[-1] == lowerStop) or 
+                                (macd()['signal'] > macd()['macd'])):
+                                    order.sell()
+                                    break
+                
+                if ((l.iloc[-1] == lowerDonch) and (Open > Close)
+                    and (macd()['macd'] < 0)):
+                        while True:
+                            order.sell()
+                            if ((h.iloc[-1] == upperStop) or 
+                                (macd()['macd'] > macd()['signal'])):
+                                    order.buy()
+                                    break
+                    
+                if ((h.iloc[-1] == upperDonch) and (Open < Close)
+                    and (macd()['macd'] > 0)):
+                        while True:
+                            order.buy()
+                            if ((l.iloc[-1] == lowerStop) or
+                                 (macd()['macd'] < macd()['signal'])):
+                                    order.sell()
+                                    break
+                        
 
-            if Open > upperBand > Close:
-                order.sell()
-                       
-            if Open < lowerBand < Close:
-                order.buy()
 
-        except Exception as e:
-            print(e)
-            logging.exception(e)
+            except Exception as e:
+                print(e)
+                logging.exception(e)
