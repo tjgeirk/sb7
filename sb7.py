@@ -1,12 +1,16 @@
 import datetime
-import logging
-
-logging.basicConfig(filename='shlongbot7.log', 
-                    encoding='utf-8', level=logging.INFO)
-
+import time
 from ccxt import kucoinfutures as kcf
 from pandas import DataFrame as dataframe 
-from ta import trend, volatility, momentum
+from ta import volatility
+
+LEVERAGE = 20
+
+LOTS = 500
+
+TIMEFRAMES = ['1m']
+
+COINS = ["KLAY/USDT:USDT","LUNC/USDT:USDT","GALA/USDT:USDT"]
 
 exchange = kcf({
     'apiKey': '',
@@ -14,12 +18,6 @@ exchange = kcf({
     'password': '',
     'adjustForTimeDifference': True, 
 })
-
-COINS = ["KLAY/USDT:USDT", "OP/USDT:USDT", "SHIB/USDT:USDT", "DOGE/USDT:USDT"]
-
-LOTS_PER_TRADE = 10
-LEVERAGE = 5
-TIMEFRAMES = ['1m','5m','15m','1h']
 
 def getData(coin, tf):
     data = exchange.fetch_ohlcv(coin, tf, limit=500)
@@ -34,7 +32,6 @@ def getData(coin, tf):
                 df[col].append(row[i])
         DF = dataframe(df)
     return DF
-
 def getPositions():
     positions = exchange.fetch_positions()
     df = {}
@@ -47,92 +44,26 @@ def getPositions():
                     df[coin][col] = v[col]
         DF = dataframe(df)
     return DF
-
-class order:
-    def __init__(self, contracts, side, bid, ask, enter, exit):
-        self.contracts = contracts
-        self.side = side
-        self.bid = bid
-        self.ask = ask
-        self.enter = enter
-        self.exit = exit
-
-    def buy():
-        if side == 'short':
-            return exchange.create_limit_order(coin, 'buy', contracts, bid, params=exit)
-        
-        elif side != 'short':
-            return exchange.create_limit_order(coin, 'buy', LOTS_PER_TRADE, bid, params=enter)
-
-    def sell():
-        if side == 'long':
-            return exchange.create_limit_order(coin, 'sell', contracts, ask, params=exit)
-        
-        if side != 'long':
-            return exchange.create_limit_order(coin, 'sell', LOTS_PER_TRADE, ask, params=enter)
-
-def ema(ohlc, window, period):
-    return trend.ema_indicator(ohlc, window).iloc[-period]
-
-def bands(window, devs, period):
-    return {'upper': volatility.bollinger_hband(c, window, devs).iloc[-period], 'lower': volatility.bollinger_lband(c, window, devs).iloc[-period], 'middle': volatility.bollinger_mavg(c, window, devs).iloc[-period]}
-
+def bands(window=13, dev=1, period=1):
+    osc = volatility.bollinger_pband(getData(coin,tf)['close'], window=window, window_dev=dev, fillna=False).iloc[-period]
+    return osc
 while True:
-    for tf in TIMEFRAMES:
-        print(getPositions())
-        for coin in COINS:
-            if coin in getPositions():
+    for tf, coin in [(tf,coin) for tf in TIMEFRAMES for coin in COINS]:
+            try:
+                print(dataframe(getPositions()))               
+                pnl = getPositions()[coin]['percentage']
                 contracts = getPositions()[coin]['contracts']
                 side = getPositions()[coin]['side']
-                pnl = getPositions()[coin]['percentage']
-            else:
-                contracts = None
-                side = None
-                pnl = None
-
-            o = getData(coin, tf)['open']
-            h = getData(coin, tf)['high']
-            l = getData(coin, tf)['low']
-            c = getData(coin, tf)['close']
-            
-            Open = (c.iloc[-2]+o.iloc[-2])/2
-            lastOpen = (c.iloc[-3]+o.iloc[-3])/2
-            Close = (c.iloc[-1]+h.iloc[-1]+l.iloc[-1])/3
-            lastClose = (c.iloc[-2]+h.iloc[-2]+l.iloc[-2])/3
-
-            ask = exchange.fetch_order_book(coin)['asks'][0][0]
-            bid = exchange.fetch_order_book(coin)['bids'][0][0]
-
-            exit = {'reduceOnly': True, 'closeOrder': True}
-            enter = {'leverage': LEVERAGE}
-            
-            hema =  ema(h, 8, 1)
-            lema = ema(l, 8, 1)
-            clema = ema(c, 8, 1)
-            opema = ema(o, 8, 1)
-
-            upperBand = bands(20, 2, 1)['upper']
-            lowerBand =  bands(20, 2, 1)['lower']
-            
-            try:
-                if Close < lema and opema > clema:
-                    order.sell()
-
-                if Close > lema and opema < clema:
-                    order.buy()
-            
-                if (Close or lastClose) > upperBand and h.iloc[-2] > h.iloc[-1]:
-                    order.sell()
-                        
-                if (Close or lastClose) < lowerBand and l.iloc[-2] < l.iloc[-1]:
-                    order.buy()
-
-                if Open > upperBand > Close:
-                    order.sell()
-                        
-                if Open < lowerBand < Close:
-                    order.buy()
-
+                if bands(13,1,1) > 1:
+                    if side != 'short': 
+                        exchange.create_market_buy_order(coin, LOTS, {'leverage': LEVERAGE})           
+                    elif side == 'short':
+                        exchange.create_market_buy_order(coin, contracts, {'reduceOnly':True, 'closeOrder':True})
+                elif bands(13,1,1) < 0:
+                    if side != 'long': 
+                        exchange.create_market_sell_order(coin, LOTS, {'leverage': LEVERAGE})           
+                    elif side == 'long':
+                        exchange.create_market_sell_order(coin, contracts, {'reduceOnly':True, 'closeOrder':True})                          
             except Exception as e:
                 print(e)
-                logging.exception(e)
+                time.sleep(10)
