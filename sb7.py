@@ -8,9 +8,9 @@ LEVERAGE = 20
 
 LOTS = 10
 
-TIMEFRAMES = ['1m', '5m', '15m']
+TIMEFRAMES = ['1m']
 
-COINS = ["DOGE/USDT:USDT"]
+COINS = ["LIT/USDT:USDT", "DOGE/USDT:USDT", "SHIB/USDT:USDT", "LUNC/USDT:USDT", "LUNA/USDT:USDT"]
 
 exchange = kcf({
     'apiKey': '',
@@ -55,44 +55,30 @@ def bands(window=13, dev=1, period=1):
     return osc
 
 
-def upper(window=13, dev=1, period=1):
-    band = volatility.bollinger_hband(getData(
-        coin, tf)['close'], window=window, window_dev=dev, fillna=False).iloc[-period]
-    return band
+def width(window=13, dev=1, period=1):
+    absolute = volatility.bollinger_wband(
+        getData(coin, tf)['close'], window, dev)
+    w = trend.sma_indicator(absolute, window).iloc[-period]
+    return w
 
-
-def lower(window=13, dev=1, period=1):
-    band = volatility.bollinger_lband(getData(
-        coin, tf)['close'], window=window, window_dev=dev, fillna=False).iloc[-period]
-    return band
-
-def width(window=21, smooth=13, dev=1, period=1):
-    absolute = volatility.bollinger_wband(getData(coin,tf)['close'], window, dev)
-    avg = trend.sma_indicator(absolute, smooth)
-    return {'width':absolute.iloc[-period], 'avg':avg.iloc[-period]}
 
 while True:
-    for tf, coin in [(tf, coin) for tf in TIMEFRAMES for coin in COINS]:
-        try:
-            print(dataframe(getPositions()))
-            pnl = getPositions()[coin]['percentage']
-            contracts = getPositions()[coin]['contracts']
-            side = getPositions()[coin]['side']
-
-            if bands() > 1 and width() ['width'] > width()['avg']:
-                if side == 'short':
+    for coin in COINS:
+        for tf in TIMEFRAMES:
+            try:
+                print(dataframe(getPositions()))
+                pnl = getPositions()[coin]['percentage']
+                contracts = getPositions()[coin]['contracts']
+                side = getPositions()[coin]['side']
+                
+                if bands() > 1 and width(13) > width(21):
                     exchange.create_market_order(
-                        coin, 'buy', contracts, None, {'closeOrder': True})
-                exchange.create_market_order(
-                    coin, 'buy', LOTS, None, {'leverage': LEVERAGE})
-
-            elif bands() < 0 and width()['width'] > width()['avg']:
-                if side == 'long':
+                        coin, 'buy', LOTS, None, {'leverage': LEVERAGE})
+                
+                if bands() < 0 and width(13) > width(21):
                     exchange.create_market_order(
-                        coin, 'sell', contracts, None, {'closeOrder': True})
-                exchange.create_market_order(
-                    coin, 'sell', LOTS, None, {'leverage': LEVERAGE})
-
-        except Exception as e:
-            print(e)
-            time.sleep(10)
+                        coin, 'sell', LOTS, None, {'leverage': LEVERAGE})
+            
+            except Exception as e:
+                print(e)
+                time.sleep(10)
