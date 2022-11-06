@@ -1,12 +1,16 @@
 import datetime
 from ccxt import kucoinfutures as kcf
 from pandas import DataFrame as dataframe
-from ta import volatility, momentum, trend
+from ta import momentum, trend, volatility
 
-LEVERAGE = 10
-LOTS = 10
+STOP = 0.05
+TRIGGER = 0.03
+INIT_STOP = 0.1
+LEVERAGE = 20
+LOTS = 50
 TIMEFRAMES = ['1m']
-COINS = ['LRC', 'BAND', 'YGG', 'OP', 'OCEAN', 'MATIC']
+COINS = ["RNDR"]
+
 exchange = kcf({
     'apiKey': '',
     'secret': '',
@@ -44,7 +48,8 @@ def getPositions():
     df = {}
     for coin in COINS:
         df[coin] = {}
-        for _, col in enumerate(['contracts', 'side', 'percentage']):
+        for _, col in enumerate(['contracts', 'side', 'percentage'
+                                 ]):
             df[coin][col] = 0
             for (_, v) in enumerate(positions):
                 if v['symbol'] == coin:
@@ -91,41 +96,52 @@ def sell():
             print(e)
 
 
-def ema(ohlc='close', window=8, period=1):
-    return trend.ema_indicator(getData(coin, tf)[ohlc], window).iloc[-period]
+def stoploss():
+    stop = STOP if getPositions()[coin]['percentage'] > TRIGGER else INIT_STOP
+
+    if getPositions()[coin]['percentage'] > trail[coin]:
+        trail[coin] = getPositions()[coin]['percentage']
+    if getPositions()[coin]['percentage'] < (trail[coin]-stop):
+        sell() if getPositions()[coin]['side'] == 'long' else buy()
+    return print('stop: ', stop, 'trail:', trail[coin])
 
 
-def bands(window=20, dev=1, period=1):
-    return {
-        'pb': volatility.bollinger_pband(
-            getData(coin, tf)['close'], window, dev).iloc[-period],
-        'dn': volatility.bollinger_lband(
-            getData(coin, tf)['close'], window, dev).iloc[-period],
-        'up': volatility.bollinger_hband(
-            getData(coin, tf)['close'], window, dev).iloc[-period]
-    }
+def kelts(window=21, period=1):
+    return volatility.keltner_channel_pband(getData(coin, tf)['high'], getData(coin, tf)['low'], getData(coin, tf)['close'], window).iloc[-period]
+
+
+def bands(window=20, devs=2, period=1):
+    return volatility.bollinger_pband(getData(coin, tf)['close'], window, devs).iloc[-period]
+
+
+def kama(ohlc='close', period=1):
+    return momentum.kama(getData(coin, tf)[ohlc]).iloc[-period]
 
 
 def rsi(window=2, period=1):
-    return momentum.rsi(getData(coin, tf)['close'], window).iloc[-period]
+    return momentum.kama(momentum.rsi(getData(coin, tf)['close'], window)).iloc[-period]
 
+
+trail = {}
+for coin in COINS:
+    trail[coin] = 0
 
 while True:
     for coin in COINS:
         exchange.cancel_all_orders()
         print(dataframe(getPositions()))
         for tf in TIMEFRAMES:
+
             print(dataframe(getPositions()[coin]))
-            # LONG
-            if bands()['pb'] > 1 and rsi() > 70:
-                while ema('close', 1) > ema() > ema('close', 200):
-                    buy()
-            while (getPositions()[coin]['side'] == 'long'):
+            print('KARSI:', rsi())
+
+            while kelts() > 1 and rsi() > 50 and getData(coin, tf)['close'].iloc[-1] > kama():
+                buy()
+            while kelts() < 0 and rsi() < 50 and getData(coin, tf)['close'].iloc[-1] < kama():
                 sell()
 
-            # SHORT
-            while bands()['pb'] < 0 and rsi() < 30:
-                while ema('close', 1) < ema() < ema('close', 200):
-                    sell()
-            while getPositions()[coin]['side'] == 'short':
-                buy()
+            while getPositions()[coin]['contracts'] != 0:
+                if getPositions()[coin]['side'] == 'long':
+                    sell() if rsi() < 50 else buy()
+                elif getPositions()[coin]['side'] == 'short':
+                    buy() if rsi() > 50 else sell()
